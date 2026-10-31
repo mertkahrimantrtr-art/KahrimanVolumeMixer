@@ -1,0 +1,83 @@
+name: Build
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  APP_PROJECT: src/KahrimanVolumeMixer/KahrimanVolumeMixer.csproj
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Kaynak kodu al
+        uses: actions/checkout@v4
+
+      - name: .NET 8 SDK kur
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Sürüm numarasını belirle
+        id: version
+        shell: pwsh
+        run: |
+          $ref = "${{ github.ref }}"
+          if ($ref -match '^refs/tags/v(\d+\.\d+\.\d+)') { $v = $Matches[1] } else { $v = '1.0.0' }
+          "version=$v" >> $env:GITHUB_OUTPUT
+          Write-Host "Sürüm: $v"
+
+      - name: Paketleri geri yükle
+        run: dotnet restore KahrimanVolumeMixer.sln
+
+      - name: Derle
+        run: dotnet build KahrimanVolumeMixer.sln -c Release --no-restore
+
+      - name: Birim testleri
+        run: dotnet test KahrimanVolumeMixer.sln -c Release --no-build --verbosity normal
+
+      - name: Tek EXE olarak yayımla (win-x64, self-contained)
+        run: >
+          dotnet publish ${{ env.APP_PROJECT }}
+          -c Release
+          -r win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:EnableCompressionInSingleFile=true
+          -p:PublishReadyToRun=true
+          -p:DebugType=embedded
+          -p:Version=${{ steps.version.outputs.version }}
+          -o publish
+
+      - name: Yayın klasörünü kontrol et
+        shell: pwsh
+        run: |
+          Get-ChildItem publish | Format-Table Name, Length
+          if (-not (Test-Path publish/KahrimanVolumeMixer.exe)) { throw "EXE üretilemedi" }
+          Copy-Item publish/KahrimanVolumeMixer.exe "KahrimanVolumeMixer-v${{ steps.version.outputs.version }}-win-x64.exe"
+
+      - name: EXE'yi artefakt olarak yükle
+        uses: actions/upload-artifact@v4
+        with:
+          name: KahrimanVolumeMixer-win-x64
+          path: KahrimanVolumeMixer-v${{ steps.version.outputs.version }}-win-x64.exe
+          if-no-files-found: error
+
+      - name: GitHub Release oluştur (yalnızca v* etiketlerinde)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: KAHRIMAN VOLUME MIXER v${{ steps.version.outputs.version }}
+          files: KahrimanVolumeMixer-v${{ steps.version.outputs.version }}-win-x64.exe
+          generate_release_notes: true
