@@ -6,32 +6,38 @@ using KahrimanVolumeMixer.Core;
 namespace KahrimanVolumeMixer.Audio;
 
 /// <summary>
-/// Uygulamanın ses motoru: tekerlek → hızlandırma → hedef birikimi → yumuşak geçiş → Chrome oturumları.
+/// Uygulamanın ses motoru: tekerlek → hızlandırma → hedef birikimi → yumuşak geçiş → Windows ana ses.
 /// Tüm işlemler UI iş parçacığında, düşük maliyetli zamanlayıcılarla çalışır:
 ///  • Geçiş zamanlayıcısı yalnızca bir geçiş sürerken çalışır (≈60 Hz).
-///  • Yoklama zamanlayıcısı 250 ms'de bir dış değişiklikleri, ≈1 sn'de bir yeni/kapanan oturumları kontrol eder.
+///  • Windows'taki ses değişiklikleri OnVolumeNotification ile anında yakalanır.
+///  • Yoklama zamanlayıcısı yedek olarak 250 ms'de bir değeri, ≈1 sn'de bir varsayılan aygıtı kontrol eder.
 /// </summary>
 internal sealed class MixerEngine : IDisposable
 {
     private const int PollIntervalMs = 250;
-    private const int SessionScanEveryNPolls = 4;
+    private const int DeviceCheckEveryNPolls = 4;
     private const double MinKickFrameMs = 8.0;
 
-    private readonly ChromeAudioBackend _backend = new();
-    private readonly SessionGroupController _controller;
+    private readonly MasterVolumeBackend _backend = new();
+    private readonly MasterVolumeController _controller;
     private readonly VolumeRamp _ramp;
     private readonly WheelAccelerator _accelerator = new();
     private readonly LevelMemory _memory = new();
+    private readonly Dispatcher _dispatcher;
     private readonly DispatcherTimer _animationTimer;
     private readonly DispatcherTimer _pollTimer;
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private double _lastFrameMs;
     private int _pollCount;
+    private int _notificationQueued;
     private bool _disposed;
 
     public MixerEngine(AppSettings settings)
     {
-        _controller = new SessionGroupController(settings.LastLevel);
+        _dispatcher = Dispatcher.CurrentDispatcher;
+
+        // Kayıtlı seviye yalnızca aygıt bulunana kadar gösterilir; Windows'a uygulanmaz.
+        _controller = new MasterVolumeController(settings.LastLevel);
         _ramp = new VolumeRamp(settings.LastLevel);
         _memory.ReturnLevel = settings.ReturnLevel;
 
@@ -46,6 +52,8 @@ internal sealed class MixerEngine : IDisposable
             Interval = TimeSpan.FromMilliseconds(PollIntervalMs),
         };
         _pollTimer.Tick += (_, _) => Poll();
+
+        _backend.VolumeNotification += OnBackendVolumeNotification;
 
         ApplySettings(settings);
     }
@@ -63,13 +71,14 @@ internal sealed class MixerEngine : IDisposable
 
     public bool IsConnected => _controller.IsConnected;
 
-    public int SessionCount => _controller.SessionCount;
+    public string? DeviceName => _backend.DeviceName;
 
     public double? ReturnLevel => _memory.ReturnLevel;
 
+    /// <summary>Varsayılan aygıta bağlanır ve Windows'un mevcut ses seviyesiyle başlar.</summary>
     public void Start()
     {
-        ScanSessions();
+        RefreshDevice();
         _pollTimer.Start();
     }
 
@@ -165,8 +174,23 @@ internal sealed class MixerEngine : IDisposable
 
     private void WriteLevel()
     {
-        _controller.SetMaster(_ramp.Current);
+        _controller.SetLevel(_ramp.Current);
         RaiseStateChanged();
+    }
+
+    /// <summary>Windows'tan gelen bildirim (arka plan iş parçacığı) → UI iş parçacığında kontrol.</summary>
+    private void OnBackendVolumeNotification(object? sender, EventArgs e)
+    {
+        if (_disposed) return;
+
+        // Hızlı ardışık bildirimleri tek bir kontrole indir.
+        if (System.Threading.Interlocked.Exchange(ref _notificationQueued, 1) == 1) return;
+
+        _dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() =>
+        {
+            System.Threading.Interlocked.Exchange(ref _notificationQueued, 0);
+            if (!_disposed) CheckExternalChanges();
+        }));
     }
 
     private void Poll()
@@ -174,39 +198,42 @@ internal sealed class MixerEngine : IDisposable
         if (_disposed) return;
 
         _pollCount++;
-        if (_pollCount % SessionScanEveryNPolls == 0)
+        if (_pollCount % DeviceCheckEveryNPolls == 0)
         {
-            ScanSessions();
+            RefreshDevice();
             return;
         }
 
         CheckExternalChanges();
     }
 
-    private void ScanSessions()
+    private void RefreshDevice()
     {
-        bool wasConnected = _controller.IsConnected;
-        int oldCount = _controller.SessionCount;
+        IVolumeEndpoint? endpoint = _backend.Refresh(out bool changed);
 
-        bool adopted;
-        try
+        if (!changed && endpoint is not null && !_controller.IsConnected)
         {
-            adopted = _controller.Sync(_backend.GetChromeSessions());
+            // Aygıt aynı ama önceki bir hata bağlantıyı düşürmüş: yeniden bağlan.
+            changed = true;
         }
-        catch
+
+        if (changed)
         {
+            _animationTimer.Stop();
+            if (_controller.Attach(endpoint))
+            {
+                _ramp.Reset(_controller.Level);
+            }
+            else
+            {
+                _ramp.Reset(_ramp.Target);
+            }
+
+            RaiseStateChanged();
             return;
         }
 
-        if (adopted)
-        {
-            _animationTimer.Stop();
-            _ramp.Reset(_controller.Master);
-        }
-
-        bool changed = adopted || wasConnected != _controller.IsConnected || oldCount != _controller.SessionCount;
-        if (CheckExternalChanges()) changed = false; // zaten bildirildi
-        if (changed) RaiseStateChanged();
+        CheckExternalChanges();
     }
 
     /// <returns>Değişiklik bulunup bildirildiyse true.</returns>
@@ -215,19 +242,9 @@ internal sealed class MixerEngine : IDisposable
         // Geçiş sürerken okunan değer bizim yazdığımızdır; karşılaştırma anlamsız.
         if (_ramp.IsActive || !_controller.IsConnected) return false;
 
-        bool changed;
-        try
-        {
-            changed = _controller.DetectExternalChanges();
-        }
-        catch
-        {
-            return false;
-        }
+        if (!_controller.DetectExternalChanges()) return false;
 
-        if (!changed) return false;
-
-        _ramp.Reset(_controller.Master);
+        _ramp.Reset(_controller.Level);
         RaiseStateChanged();
         return true;
     }
@@ -235,8 +252,8 @@ internal sealed class MixerEngine : IDisposable
     private void RaiseStateChanged() => StateChanged?.Invoke(this, EventArgs.Empty);
 
     /// <summary>
-    /// Güvenli kapatma: zamanlayıcılar durur, COM nesneleri bırakılır.
-    /// Chrome'un ses seviyesi ve sessiz durumu DEĞİŞTİRİLMEZ.
+    /// Güvenli kapatma: zamanlayıcılar durur, olay abonelikleri ve COM nesneleri bırakılır.
+    /// Windows ses seviyesi ve sessiz durumu sıfırlanmaz.
     /// </summary>
     public void Dispose()
     {
@@ -246,13 +263,14 @@ internal sealed class MixerEngine : IDisposable
         _animationTimer.Stop();
         _pollTimer.Stop();
 
-        // Yarım kalan bir geçiş varsa hedefe oturt; kaydedilen seviye ile Chrome'daki seviye aynı olsun.
+        // Yarım kalan bir geçiş varsa hedefe oturt; kaydedilen seviye ile Windows'taki seviye aynı olsun.
         if (_ramp.IsActive)
         {
             _ramp.Reset(_ramp.Target);
-            _controller.SetMaster(_ramp.Current);
+            _controller.SetLevel(_ramp.Current);
         }
 
+        _backend.VolumeNotification -= OnBackendVolumeNotification;
         _backend.Dispose();
     }
 }

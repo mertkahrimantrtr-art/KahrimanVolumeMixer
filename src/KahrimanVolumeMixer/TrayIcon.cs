@@ -55,7 +55,7 @@ internal sealed class TrayIcon : IDisposable
 
     public void Update(int percent, bool muted, bool connected, bool topmost)
     {
-        string state = !connected ? "Chrome bulunamadı" : muted ? "Sessiz" : $"%{percent}";
+        string state = !connected ? "Ses aygıtı yok" : muted ? "Sessiz" : $"%{percent}";
         string text = $"KAHRIMAN VOLUME MIXER — {state}";
         if (text != _lastText)
         {

@@ -24,7 +24,7 @@ public partial class MainWindow : Window
     private int _shownPercent = -1;
     private bool? _shownMuted;
     private bool? _shownConnected;
-    private int _shownSessionCount = -1;
+    private string? _shownDevice;
 
     public MainWindow(AppSettings settings, SettingsStore store)
     {
@@ -167,20 +167,20 @@ public partial class MainWindow : Window
         int percent = VolumeMath.ToPercent(level);
         bool muted = _engine.IsMuted;
         bool connected = _engine.IsConnected;
-        int sessions = _engine.SessionCount;
+        string? device = _engine.DeviceName;
 
         Fader.Value = level;
 
-        if (!force && percent == _shownPercent && muted == _shownMuted && connected == _shownConnected && sessions == _shownSessionCount)
+        if (!force && percent == _shownPercent && muted == _shownMuted && connected == _shownConnected && device == _shownDevice)
         {
             return;
         }
 
-        bool stateChanged = force || muted != _shownMuted || connected != _shownConnected || sessions != _shownSessionCount;
+        bool stateChanged = force || muted != _shownMuted || connected != _shownConnected || device != _shownDevice;
         _shownPercent = percent;
         _shownMuted = muted;
         _shownConnected = connected;
-        _shownSessionCount = sessions;
+        _shownDevice = device;
 
         PercentText.Text = muted ? "MUTE" : percent + "%";
 
@@ -191,8 +191,10 @@ public partial class MainWindow : Window
 
             PercentText.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty, muted ? "AccentBrush" : "TextBrush");
             StatusDot.SetResourceReference(Shape.FillProperty, connected ? "OkBrush" : "OffBrush");
-            StatusDot.ToolTip = connected ? $"Chrome bağlı ({sessions} ses oturumu)" : "Chrome ses oturumu bulunamadı";
-            StatusText.Text = !connected ? "CHROME YOK" : sessions > 1 ? $"CHROME ×{sessions}" : "CHROME";
+            string deviceLabel = string.IsNullOrWhiteSpace(device) ? "Varsayılan ses aygıtı" : device;
+            StatusDot.ToolTip = connected ? $"Windows ana ses — {deviceLabel}" : "Ses çıkış aygıtı bulunamadı";
+            StatusText.Text = connected ? "WINDOWS" : "AYGIT YOK";
+            StatusText.ToolTip = connected ? deviceLabel : null;
 
             MuteGlyph.Text = muted ? "" : "";
             MuteButton.SetResourceReference(BackgroundProperty, muted ? "AccentDimBrush" : "ButtonBrush");
@@ -358,7 +360,7 @@ public partial class MainWindow : Window
         ThemeManager.ThemeChanged -= OnThemeChanged;
         _settingsWindow?.Close();
 
-        // Güvenli kapatma: Chrome'un ses seviyesine dokunulmaz, yalnızca kaynaklar bırakılır.
+        // Güvenli kapatma: Windows ses seviyesine dokunulmaz, yalnızca kaynaklar bırakılır.
         _engine.Dispose();
         SaveNow();
         _tray.Dispose();

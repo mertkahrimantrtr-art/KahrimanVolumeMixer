@@ -4,9 +4,9 @@
 
 ```
 ┌────────────┐
-│ ●     ⚙ – ✕│  ● bağlantı (yeşil: Chrome bağlı, gri: yok) · ayarlar · tepsiye küçült · kapat
+│ ●     ⚙ – ✕│  ● bağlantı (yeşil: ses aygıtı bağlı, gri: yok) · ayarlar · tepsiye küçült · kapat
 │    75%     │  anlık seviye (sessizde "MUTE")
-│   CHROME   │  durum: CHROME / CHROME ×2 (oturum sayısı) / CHROME YOK
+│  WINDOWS   │  durum: WINDOWS (üzerine gelince aygıt adı) / AYGIT YOK
 │  ─ ██ ─    │
 │  ─ ██ ─    │  dikey fader — tekerlek, tıklama, sürükleme
 │ ═══██═══   │  ← fader kapağı
@@ -17,6 +17,8 @@
 ```
 
 ## Ses ayarı
+
+Mikser Windows'un ana ses seviyesini kontrol eder. Gösterilen yüzde Windows'taki değerin aynısıdır; Windows ses simgesinden veya klavye ses tuşlarından yapılan değişiklikler fader'a anında yansır.
 
 - **Tekerlek:** imleci pencerenin herhangi bir yerine getir ve çevir. Tıklaman gerekmez.
   - Yavaş çevirme → hassas (%1,5 / çentik)
@@ -46,7 +48,7 @@
 - **Taşıma:** üst çubuktan (bağlantı noktasının yanı) sürükle.
 - **Boyut:** kenarlardan sürükle (en küçük 76 × 200).
 - **Tepsiye küçültme:** `–` butonu. Sistem tepsisindeki simgeye sol tıkla göster/gizle; sağ tıkla menü (Sessiz, LOW, HIGH, Her zaman üstte, Ayarlar, Çıkış).
-- **Kapatma:** `✕` veya tepsi menüsünden Çıkış. Chrome'un sesi olduğu gibi kalır.
+- **Kapatma:** `✕` veya tepsi menüsünden Çıkış. Windows sesi olduğu gibi kalır.
 - Konum ve boyut kaydedilir. Kaydedilen monitör artık bağlı değilse pencere ana ekranın sağ kenarında açılır.
 - Uygulama zaten açıkken EXE'ye tekrar çift tıklamak mevcut pencereyi öne getirir.
 
@@ -71,7 +73,7 @@ Ayarlar değiştirildiği anda uygulanır ve `%APPDATA%\KahrimanVolumeMixer\sett
 
 | Belirti | Çözüm |
 |---|---|
-| "CHROME YOK" yazıyor | Chrome'da ses çalan bir sekme aç. Windows, Chrome ilk kez ses çıkarana kadar ses oturumu oluşturmaz. |
+| "AYGIT YOK" yazıyor | Bir hoparlör/kulaklık bağla veya Windows ses ayarlarından varsayılan çıkış aygıtını seç. |
 | Tekerlek çalışmıyor, önce tıklamam gerekiyor | Windows Ayarlar → Bluetooth ve cihazlar → Fare → "Etkin olmayan pencereleri üzerine geldiğimde kaydır" seçeneğini aç. |
 | Pencere görünmüyor | Tepsi simgesine tıkla; ya da EXE'yi tekrar çalıştır (öne gelir). |
 | Ayarları sıfırlamak | Uygulamayı kapat, `%APPDATA%\KahrimanVolumeMixer\settings.json` dosyasını sil. |

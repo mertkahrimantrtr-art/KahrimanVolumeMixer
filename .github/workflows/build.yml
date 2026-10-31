@@ -33,7 +33,7 @@ jobs:
         shell: pwsh
         run: |
           $ref = "${{ github.ref }}"
-          if ($ref -match '^refs/tags/v(\d+\.\d+\.\d+)') { $v = $Matches[1] } else { $v = '1.0.0' }
+          if ($ref -match '^refs/tags/v(\d+\.\d+\.\d+)') { $v = $Matches[1] } else { $v = '1.1.0' }
           "version=$v" >> $env:GITHUB_OUTPUT
           Write-Host "Sürüm: $v"
 
