@@ -80,12 +80,9 @@ Geliştirirken çalıştırma: `dotnet run --project src/KahrimanVolumeMixer`
 
 ### Otomatik derleme ve sürüm (GitHub Actions)
 
-`.github/workflows/build.yml` her push / PR'da Windows'ta derler, testleri çalıştırır ve EXE'yi artefakt olarak yükler. Bir sürüm etiketi gönderildiğinde EXE otomatik olarak **Releases** bölümüne eklenir:
+`.github/workflows/build.yml` her push / PR'da Windows'ta derler, testleri çalıştırır ve EXE'yi artefakt olarak yükler.
 
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
+**Otomatik sürüm:** `src/KahrimanVolumeMixer/KahrimanVolumeMixer.csproj` içindeki `<Version>` artırılıp `main` dalına gönderildiğinde, o sürüm henüz yayımlanmamışsa iş akışı `vX.Y.Z` etiketini ve Release'i kendisi oluşturur ve EXE'yi ekler. Elle etiket göndermek (`git tag v1.2.0 && git push origin v1.2.0`) de çalışır.
 
 ## Proje yapısı
 
